@@ -39,3 +39,6 @@
 
 # debug information files
 *.dwo
+/out/build/x64-debug
+/.vs
+/CMakePresets.json
