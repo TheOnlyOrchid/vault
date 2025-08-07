@@ -16,7 +16,8 @@ private:
 public:
     bool initialize(const std::string& masterPassword);
     void addPassword(const std::string& service, const std::string& password);
-    bool getPassword(const std::string& service) const;
-    void listServices() const;
+    std::string getPassword(const std::string& service) const;
+    std::vector<std::string> listServices() const;
     bool deletePassword(const std::string& service);
+    bool isInitialized() const { return !key.empty(); }
 };

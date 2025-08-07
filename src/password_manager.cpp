@@ -32,52 +32,32 @@ bool PasswordManager::initialize(const std::string& masterPassword) {
 
 void PasswordManager::addPassword(const std::string& service, const std::string& password) {
     passwords[service] = password;
-    try {
-        saveToFile();
-        std::cout << "Password saved for: " << service << std::endl;
-    }
-    catch (const std::exception& e) {
-        std::cerr << "Failed to save: " << e.what() << std::endl;
-    }
+    saveToFile();
 }
 
-bool PasswordManager::getPassword(const std::string& service) const {
+std::string PasswordManager::getPassword(const std::string& service) const {
     auto it = passwords.find(service);
     if (it != passwords.end()) {
-        std::cout << "Password for " << service << ": " << it->second << std::endl;
-        return true;
+        return it->second;
     }
-    std::cout << "No password found for: " << service << std::endl;
-    return false;
+    return "";
 }
 
-void PasswordManager::listServices() const {
-    if (passwords.empty()) {
-        std::cout << "No passwords stored." << std::endl;
-        return;
-    }
-
-    std::cout << "Stored services:" << std::endl;
+std::vector<std::string> PasswordManager::listServices() const {
+    std::vector<std::string> services;
+    services.reserve(passwords.size());
     for (const auto& pair : passwords) {
-        std::cout << "  - " << pair.first << std::endl;
+        services.push_back(pair.first);
     }
+    return services;
 }
 
 bool PasswordManager::deletePassword(const std::string& service) {
     auto it = passwords.find(service);
     if (it != passwords.end()) {
         passwords.erase(it);
-        try {
-            saveToFile();
-            std::cout << "Password deleted for: " << service << std::endl;
-            return true;
-        }
-        catch (const std::exception& e) {
-            std::cerr << "Failed to save after deletion: " << e.what() << std::endl;
-        }
-    }
-    else {
-        std::cout << "No password found for: " << service << std::endl;
+        saveToFile();
+        return true;
     }
     return false;
 }
