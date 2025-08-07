@@ -15,8 +15,8 @@ void printUsage() {
 int main() {
     std::cout << "=--= Password Manager =--=" << std::endl;
 
-    std::string masterPassword;
     std::cout << "Enter master password: ";
+    std::string masterPassword;
     std::getline(std::cin, masterPassword);
 
     if (masterPassword.empty()) {
