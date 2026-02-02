@@ -42,3 +42,6 @@
 /out/build/x64-debug
 /.vs
 /CMakePresets.json
+
+/.idea
+/setup_vcpkg.bat

@@ -11,10 +11,12 @@ static void glfw_error_callback(int error, const char* description) {
 }
 
 int main(int, char**) {
+    // self explanatory, sets the error callback
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit())
         return 1;
 
+    // glsl needs char* not string
     const char* glsl_version = "#version 130";
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
@@ -36,9 +38,12 @@ int main(int, char**) {
 
     PasswordManager pm;
     bool initialized = false;
+
+    // reserved memory
     char masterPassword[128] = "";
     char service[128] = "";
     char password[128] = "";
+
     char statusMessage[256] = "Enter master password to initialize";
     bool showPassword = false;
     std::vector<std::string> servicesList;
