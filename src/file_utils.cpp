@@ -5,6 +5,10 @@
 #include <stdexcept>
 
 void FileUtils::writeFile(const std::string& filename, const std::string& content) {
+    if (!fileExists(filename)) {
+        throw std::runtime_error("File does not exist: " + filename);
+    }
+
     std::ofstream file(filename, std::ios::binary);
 
     // failed to open
@@ -43,7 +47,15 @@ void FileUtils::writeFile(const std::string& filename, const std::string& conten
     }
 }
 
+/**
+ * there is no sanitisation of the file. Since this is a local password manager this is okay, however if I were to
+ * include web support, or anything that contained untrusted inputs, sanitisation would be *needed*.
+ */
 std::string FileUtils::readFile(const std::string& filename) {
+    if (!fileExists(filename)) {
+        throw std::runtime_error("File does not exist: " + filename);
+    }
+
     std::ifstream file(filename, std::ios::binary);
     if (!file) {
         throw std::runtime_error("Failed to read from: " + filename);
