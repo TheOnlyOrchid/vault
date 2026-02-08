@@ -2,12 +2,21 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+#include "secure_memory.h"
+#include "secret_string.h"
 #include <GLFW/glfw3.h>
+#include <cstdio>
+#include <cstring>
 #include <iostream>
 #include <vector>
 
 static void glfw_error_callback(int error, const char* description) {
     fprintf(stderr, "GLFW Error %d: %s\n", error, description);
+}
+
+static void set_status(char* dst, std::size_t dst_len, const char* msg) {
+    if (!dst || dst_len == 0) return;
+    std::snprintf(dst, dst_len, "%s", (msg ? msg : ""));
 }
 
 int main(int, char**) {
@@ -48,6 +57,9 @@ int main(int, char**) {
     bool showPassword = false;
     std::vector<std::string> servicesList;
     int selectedService = -1;
+    int prevSelectedService = -1;
+    bool prevShowPassword = false;
+    SecretString selectedPassword;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -67,18 +79,24 @@ int main(int, char**) {
             if (ImGui::Button("Initialize")) {
                 try {
                     if (strlen(masterPassword) == 0) {
-                        strcpy(statusMessage, "Master password cannot be empty");
-                    }
-                    else if (pm.initialize(masterPassword)) {
-                        initialized = true;
-                        strcpy(statusMessage, "Password manager initialized successfully");
+                        set_status(statusMessage, sizeof(statusMessage), "Master password cannot be empty");
                     }
                     else {
-                        strcpy(statusMessage, "Initialization failed");
+                        SecretString master = SecretString::from_cstr(masterPassword);
+                        const bool ok = pm.initialize(master);
+                        master.wipe();
+                        secure::zeroize(masterPassword, sizeof(masterPassword));
+
+                        if (ok) {
+                        initialized = true;
+                            set_status(statusMessage, sizeof(statusMessage), "Password manager initialized successfully");
+                        } else {
+                            set_status(statusMessage, sizeof(statusMessage), "Initialization failed");
+                        }
                     }
                 }
                 catch (const std::exception& e) {
-                    strcpy(statusMessage, e.what());
+                    set_status(statusMessage, sizeof(statusMessage), e.what());
                 }
             }
         }
@@ -93,13 +111,16 @@ int main(int, char**) {
 
             if (ImGui::Button("Save Password")) {
                 if (strlen(service) == 0 || strlen(password) == 0) {
-                    strcpy(statusMessage, "Service and password cannot be empty");
+                    set_status(statusMessage, sizeof(statusMessage), "Both service and password must be filled in.");
                 }
                 else {
-                    pm.addPassword(service, password);
-                    strcpy(statusMessage, (std::string("Password saved for: ") + service).c_str());
-                    memset(service, 0, sizeof(service));
-                    memset(password, 0, sizeof(password));
+                    SecretString pw = SecretString::from_cstr(password);
+                    pm.addPassword(service, pw);
+                    pw.wipe();
+
+                    std::snprintf(statusMessage, sizeof(statusMessage), "Password saved for: %s", service);
+                    std::memset(service, 0, sizeof(service));
+                    secure::zeroize(password, sizeof(password));
                 }
             }
 
@@ -118,9 +139,10 @@ int main(int, char**) {
             if (ImGui::Button("Delete Selected") && selectedService >= 0) {
                 if (selectedService >= 0 && selectedService < servicesList.size()) {
                     pm.deletePassword(servicesList[selectedService]);
-                    strcpy(statusMessage, (std::string("Deleted password for: ") + servicesList[selectedService]).c_str());
+                    std::snprintf(statusMessage, sizeof(statusMessage), "Deleted password for: %s", servicesList[selectedService].c_str());
                     selectedService = -1;
                     servicesList = pm.listServices();
+                    selectedPassword.wipe();
                 }
             }
 
@@ -140,12 +162,30 @@ int main(int, char**) {
 
             if (selectedService >= 0 && selectedService < servicesList.size()) {
                 ImGui::Text("Selected: %s", servicesList[selectedService].c_str());
-                std::string pwd = pm.getPassword(servicesList[selectedService]);
-                ImGui::Text("Password: %s", showPassword ? pwd.c_str() : "********");
+
+                if (selectedService != prevSelectedService) {
+                    selectedPassword.wipe();
+                    prevSelectedService = selectedService;
+                }
+
+                if (!showPassword && prevShowPassword) {
+                    selectedPassword.wipe();
+                }
+                prevShowPassword = showPassword;
+
+                if (showPassword && selectedPassword.empty()) {
+                    selectedPassword = pm.getPassword(servicesList[selectedService]);
+                }
+
+                ImGui::Text("Password: %s", showPassword ? selectedPassword.c_str() : "********");
 
                 if (ImGui::Button("Copy Password")) {
-                    ImGui::SetClipboardText(pwd.c_str());
-                    strcpy(statusMessage, "Password copied to clipboard");
+                    if (selectedPassword.empty()) {
+                        selectedPassword = pm.getPassword(servicesList[selectedService]);
+                    }
+                    ImGui::SetClipboardText(selectedPassword.c_str());
+                    selectedPassword.wipe(); // don't keep it around after copying
+                    set_status(statusMessage, sizeof(statusMessage), "Password copied to clipboard");
                 }
             }
         }

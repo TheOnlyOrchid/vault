@@ -6,7 +6,7 @@
 
 const std::string PasswordManager::dataFile = "passwords.dat";
 
-bool PasswordManager::initialize(const std::string& masterPassword) {
+bool PasswordManager::initialize(const SecretString& masterPassword) {
     try {
         const std::string saltFile = "salt.dat";
         std::vector<unsigned char> salt;
@@ -20,7 +20,10 @@ bool PasswordManager::initialize(const std::string& masterPassword) {
             FileUtils::writeFile(saltFile, CryptoUtils::bytesToHex(salt));
         }
 
-        key = CryptoUtils::deriveKey(masterPassword, salt);
+        auto pw_view = masterPassword.view();
+        key = CryptoUtils::deriveKey(
+            std::span<const unsigned char>(reinterpret_cast<const unsigned char*>(pw_view.data()), pw_view.size()),
+            salt);
         loadFromFile();
         return true;
     }
@@ -30,17 +33,21 @@ bool PasswordManager::initialize(const std::string& masterPassword) {
     }
 }
 
-void PasswordManager::addPassword(const std::string& service, const std::string& password) {
-    passwords[service] = password;
+void PasswordManager::addPassword(const std::string& service, const SecretString& password) {
+    SecretString copy;
+    copy.assign(password.view());
+    passwords[service] = std::move(copy);
     saveToFile();
 }
 
-std::string PasswordManager::getPassword(const std::string& service) const {
+SecretString PasswordManager::getPassword(const std::string& service) const {
     auto it = passwords.find(service);
     if (it != passwords.end()) {
-        return it->second;
+        SecretString out;
+        out.assign(it->second.view());
+        return out;
     }
-    return "";
+    return SecretString();
 }
 
 std::vector<std::string> PasswordManager::listServices() const {
@@ -65,8 +72,27 @@ bool PasswordManager::deletePassword(const std::string& service) {
 void PasswordManager::saveToFile() {
     std::string content;
     for (const auto& pair : passwords) {
-        std::string line = pair.first + ":" + pair.second + "\n";
-        content += CryptoUtils::encrypt(line, key) + "\n";
+        SecretString line;
+        line.assign(pair.first);
+
+        {
+            auto service = pair.first;
+            auto pw = pair.second.view();
+            std::vector<char, secure::allocator<char>> tmp;
+            tmp.reserve(service.size() + 1 + pw.size() + 1 + 1);
+            tmp.insert(tmp.end(), service.begin(), service.end());
+            tmp.push_back(':');
+            tmp.insert(tmp.end(), pw.begin(), pw.end());
+            tmp.push_back('\n');
+            tmp.push_back('\0');
+
+            line.assign(std::string_view(tmp.data(), tmp.size() - 1));
+        }
+
+        auto line_view = line.view();
+        content += CryptoUtils::encrypt(
+            std::span<const unsigned char>(reinterpret_cast<const unsigned char*>(line_view.data()), line_view.size()),
+            std::span<const unsigned char>(key.data(), key.size())) + "\n";
     }
     FileUtils::writeFile(dataFile, content);
 }
@@ -83,15 +109,22 @@ void PasswordManager::loadFromFile() {
         if (line.empty()) continue;
 
         try {
-            std::string decrypted = CryptoUtils::decrypt(line, key);
-            size_t colonPos = decrypted.find(':');
-            if (colonPos != std::string::npos) {
-                std::string service = decrypted.substr(0, colonPos);
-                std::string password = decrypted.substr(colonPos + 1);
-                if (!password.empty() && password.back() == '\n') {
-                    password.pop_back();
+            secure::SecureBytes decrypted = CryptoUtils::decryptToBytes(
+                line, std::span<const unsigned char>(key.data(), key.size()));
+            auto it = std::find(decrypted.begin(), decrypted.end(), static_cast<unsigned char>(':'));
+            if (it != decrypted.end()) {
+                std::string service(reinterpret_cast<const char*>(decrypted.data()),
+                    static_cast<std::size_t>(std::distance(decrypted.begin(), it)));
+
+                const unsigned char* pw_start = &*(it + 1);
+                std::size_t pw_len = static_cast<std::size_t>(decrypted.end() - (it + 1));
+                if (pw_len > 0 && pw_start[pw_len - 1] == static_cast<unsigned char>('\n')) {
+                    pw_len -= 1;
                 }
-                passwords[service] = password;
+
+                SecretString password;
+                password.assign(std::string_view(reinterpret_cast<const char*>(pw_start), pw_len));
+                passwords[service] = std::move(password);
             }
         }
         catch (const std::exception& e) {

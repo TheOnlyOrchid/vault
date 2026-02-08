@@ -15,11 +15,12 @@ std::vector<unsigned char> CryptoUtils::generateRandom(int length) {
     return buffer;
 }
 
-std::vector<unsigned char> CryptoUtils::deriveKey(const std::string& password,
+secure::SecureBytes CryptoUtils::deriveKey(std::span<const unsigned char> password,
     const std::vector<unsigned char>& salt) {
-    std::vector<unsigned char> key(32); // 256 bits
+    secure::SecureBytes key(32); // 256 bits
 
-    if (PKCS5_PBKDF2_HMAC(password.c_str(), password.length(),
+    if (PKCS5_PBKDF2_HMAC(reinterpret_cast<const char*>(password.data()),
+        static_cast<int>(password.size()),
         salt.data(), salt.size(),
         100000, // iterations
         EVP_sha256(),
@@ -48,11 +49,11 @@ std::vector<unsigned char> CryptoUtils::hexToBytes(const std::string& hex) {
     return bytes;
 }
 
-std::string CryptoUtils::encrypt(const std::string& plaintext,
-    const std::vector<unsigned char>& key) {
+std::string CryptoUtils::encrypt(std::span<const unsigned char> plaintext,
+    std::span<const unsigned char> key) {
     std::vector<unsigned char> iv = generateRandom(12); // 96-bit IV for GCM
     std::vector<unsigned char> tag(16); // 128-bit tag
-    std::vector<unsigned char> ciphertext(plaintext.length());
+    std::vector<unsigned char> ciphertext(plaintext.size());
 
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) throw std::runtime_error("Failed to create cipher context");
@@ -66,8 +67,8 @@ std::string CryptoUtils::encrypt(const std::string& plaintext,
 
     int len;
     if (EVP_EncryptUpdate(ctx, ciphertext.data(), &len,
-        reinterpret_cast<const unsigned char*>(plaintext.c_str()),
-        plaintext.length()) != 1) {
+        plaintext.data(),
+        static_cast<int>(plaintext.size())) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         throw std::runtime_error("Failed to encrypt data");
     }
@@ -87,8 +88,8 @@ std::string CryptoUtils::encrypt(const std::string& plaintext,
     return bytesToHex(iv) + bytesToHex(tag) + bytesToHex(ciphertext);
 }
 
-std::string CryptoUtils::decrypt(const std::string& encryptedHex,
-    const std::vector<unsigned char>& key) {
+secure::SecureBytes CryptoUtils::decryptToBytes(const std::string& encryptedHex,
+    std::span<const unsigned char> key) {
     if (encryptedHex.length() < 56) {
         throw std::runtime_error("Invalid encrypted data format");
     }
@@ -96,7 +97,7 @@ std::string CryptoUtils::decrypt(const std::string& encryptedHex,
     std::vector<unsigned char> iv = hexToBytes(encryptedHex.substr(0, 24));
     std::vector<unsigned char> tag = hexToBytes(encryptedHex.substr(24, 32));
     std::vector<unsigned char> ciphertext = hexToBytes(encryptedHex.substr(56));
-    std::vector<unsigned char> plaintext(ciphertext.size());
+    secure::SecureBytes plaintext(ciphertext.size());
 
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) throw std::runtime_error("Failed to create cipher context");
@@ -109,7 +110,7 @@ std::string CryptoUtils::decrypt(const std::string& encryptedHex,
     }
 
     int len;
-    if (EVP_DecryptUpdate(ctx, plaintext.data(), &len, ciphertext.data(), ciphertext.size()) != 1) {
+    if (EVP_DecryptUpdate(ctx, plaintext.data(), &len, ciphertext.data(), static_cast<int>(ciphertext.size())) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         throw std::runtime_error("Failed to decrypt data");
     }
@@ -121,5 +122,5 @@ std::string CryptoUtils::decrypt(const std::string& encryptedHex,
     }
 
     EVP_CIPHER_CTX_free(ctx);
-    return std::string(plaintext.begin(), plaintext.end());
+    return plaintext;
 }
