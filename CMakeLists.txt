@@ -22,7 +22,10 @@ add_executable(PasswordManager
   "src/crypto_utils.cpp"
 )
 
-target_include_directories(PasswordManager PRIVATE include)
+target_include_directories(PasswordManager PRIVATE
+  include
+  ${CMAKE_SOURCE_DIR}
+)
 
 # Dependencies
 
