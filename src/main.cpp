@@ -64,6 +64,20 @@ int main(int, char**) {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
+        pm.pollAsync();
+        bool asyncSuccess = false;
+        std::string asyncMessage;
+        if (pm.consumeAsyncResult(asyncSuccess, asyncMessage)) {
+            set_status(statusMessage, sizeof(statusMessage), asyncMessage.c_str());
+            if (asyncSuccess && pm.isInitialized()) {
+                initialized = true;
+                servicesList = pm.listServices();
+            }
+        }
+
+        const bool busy = pm.isBusy();
+        const std::string busyMessage = pm.currentStatusMessage();
+
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
@@ -74,6 +88,10 @@ int main(int, char**) {
         if (!initialized) {
             ImGui::Text("Password Manager Initialization");
             ImGui::Separator();
+            if (busy) {
+                ImGui::TextWrapped("%s", busyMessage.c_str());
+            }
+            ImGui::BeginDisabled(busy);
             ImGui::InputTextWithHint("Master Password", "Enter your master password", masterPassword, IM_ARRAYSIZE(masterPassword), ImGuiInputTextFlags_Password);
 
             if (ImGui::Button("Initialize")) {
@@ -83,28 +101,27 @@ int main(int, char**) {
                     }
                     else {
                         SecretString master = SecretString::from_cstr(masterPassword);
-                        const bool ok = pm.initialize(master);
+                        pm.beginInitialize(std::move(master));
                         master.wipe();
                         secure::zeroize(masterPassword, sizeof(masterPassword));
-
-                        if (ok) {
-                        initialized = true;
-                            set_status(statusMessage, sizeof(statusMessage), "Password manager initialized successfully");
-                        } else {
-                            set_status(statusMessage, sizeof(statusMessage), "Initialization failed");
-                        }
+                        set_status(statusMessage, sizeof(statusMessage), "Unlocking vault...");
                     }
                 }
                 catch (const std::exception& e) {
                     set_status(statusMessage, sizeof(statusMessage), e.what());
                 }
             }
+            ImGui::EndDisabled();
         }
         else {
             ImGui::Text("Password Manager");
             ImGui::Separator();
+            if (busy) {
+                ImGui::TextWrapped("%s", busyMessage.c_str());
+            }
 
             ImGui::Text("Add/Update Password");
+            ImGui::BeginDisabled(busy);
             ImGui::InputTextWithHint("Service", "e.g. Gmail, Facebook", service, IM_ARRAYSIZE(service));
             ImGui::InputTextWithHint("Password", "Enter password", password, IM_ARRAYSIZE(password), showPassword ? 0 : ImGuiInputTextFlags_Password);
             ImGui::Checkbox("Show password", &showPassword);
@@ -115,10 +132,9 @@ int main(int, char**) {
                 }
                 else {
                     SecretString pw = SecretString::from_cstr(password);
-                    pm.addPassword(service, pw);
+                    pm.beginAddPassword(service, std::move(pw));
                     pw.wipe();
-
-                    std::snprintf(statusMessage, sizeof(statusMessage), "Password saved for: %s", service);
+                    set_status(statusMessage, sizeof(statusMessage), "Saving password entry...");
                     std::memset(service, 0, sizeof(service));
                     secure::zeroize(password, sizeof(password));
                 }
@@ -128,8 +144,9 @@ int main(int, char**) {
 
             ImGui::Text("Password Management");
 
-            servicesList.clear();
-            servicesList = pm.listServices();
+            if (!busy) {
+                servicesList = pm.listServices();
+            }
 
             if (ImGui::Button("Refresh List")) {
                 servicesList = pm.listServices();
@@ -138,10 +155,9 @@ int main(int, char**) {
             ImGui::SameLine();
             if (ImGui::Button("Delete Selected") && selectedService >= 0) {
                 if (selectedService >= 0 && selectedService < servicesList.size()) {
-                    pm.deletePassword(servicesList[selectedService]);
-                    std::snprintf(statusMessage, sizeof(statusMessage), "Deleted password for: %s", servicesList[selectedService].c_str());
+                    pm.beginDeletePassword(servicesList[selectedService]);
+                    set_status(statusMessage, sizeof(statusMessage), "Deleting password entry...");
                     selectedService = -1;
-                    servicesList = pm.listServices();
                     selectedPassword.wipe();
                 }
             }
@@ -173,14 +189,14 @@ int main(int, char**) {
                 }
                 prevShowPassword = showPassword;
 
-                if (showPassword && selectedPassword.empty()) {
+                if (!busy && showPassword && selectedPassword.empty()) {
                     selectedPassword = pm.getPassword(servicesList[selectedService]);
                 }
 
                 ImGui::Text("Password: %s", showPassword ? selectedPassword.c_str() : "********");
 
                 if (ImGui::Button("Copy Password")) {
-                    if (selectedPassword.empty()) {
+                    if (!busy && selectedPassword.empty()) {
                         selectedPassword = pm.getPassword(servicesList[selectedService]);
                     }
                     ImGui::SetClipboardText(selectedPassword.c_str());
@@ -188,6 +204,7 @@ int main(int, char**) {
                     set_status(statusMessage, sizeof(statusMessage), "Password copied to clipboard");
                 }
             }
+            ImGui::EndDisabled();
         }
 
         ImGui::Separator();

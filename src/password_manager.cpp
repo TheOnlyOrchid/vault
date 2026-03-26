@@ -272,6 +272,20 @@ void PasswordManager::zeroizeString(std::string& value) noexcept {
     }
 }
 
+PasswordManager::~PasswordManager() {
+    std::future<void> worker;
+    {
+        std::lock_guard<std::mutex> lock(async_mutex_);
+        if (async_state_.worker.valid()) {
+            worker = std::move(async_state_.worker);
+        }
+    }
+
+    if (worker.valid()) {
+        worker.wait();
+    }
+}
+
 PasswordManager::Entry* PasswordManager::findPasswordEntry(const std::string& service) {
     return const_cast<Entry*>(static_cast<const PasswordManager*>(this)->findPasswordEntry(service));
 }
@@ -284,6 +298,7 @@ const PasswordManager::Entry* PasswordManager::findPasswordEntry(const std::stri
 }
 
 bool PasswordManager::initialize(const SecretString& masterPassword) {
+    std::lock_guard<std::mutex> lock(data_mutex_);
     try {
         const auto pwView = masterPassword.view();
         if (pwView.empty()) {
@@ -423,6 +438,7 @@ bool PasswordManager::initialize(const SecretString& masterPassword) {
 }
 
 void PasswordManager::addPassword(const std::string& service, const SecretString& password) {
+    std::lock_guard<std::mutex> lock(data_mutex_);
     if (service.empty()) {
         throw std::runtime_error("Service must not be empty");
     }
@@ -493,6 +509,7 @@ void PasswordManager::addPassword(const std::string& service, const SecretString
 }
 
 SecretString PasswordManager::getPassword(const std::string& service) const {
+    std::lock_guard<std::mutex> lock(data_mutex_);
     const Entry* entry = findPasswordEntry(service);
     if (!entry) {
         return SecretString();
@@ -511,6 +528,7 @@ SecretString PasswordManager::getPassword(const std::string& service) const {
 }
 
 std::vector<std::string> PasswordManager::listServices() const {
+    std::lock_guard<std::mutex> lock(data_mutex_);
     std::vector<std::string> services;
     services.reserve(entries_.size());
 
@@ -525,6 +543,7 @@ std::vector<std::string> PasswordManager::listServices() const {
 }
 
 bool PasswordManager::deletePassword(const std::string& service) {
+    std::lock_guard<std::mutex> lock(data_mutex_);
     const auto it = std::find_if(entries_.begin(), entries_.end(), [&](const Entry& entry) {
         return entry.type == EntryType::password && entry.title == service;
     });
@@ -611,4 +630,86 @@ void PasswordManager::saveToFile() {
         std::span<const unsigned char>(key.data(), key.size()),
         ciphertext);
     FileUtils::writeFileAtomic(dataFile, blob);
+}
+
+bool PasswordManager::beginInitialize(SecretString masterPassword) {
+    startAsync(AsyncOperation::initialize,
+        "Unlocking vault. Deriving key and loading encrypted data...",
+        [this, masterPassword = std::move(masterPassword)]() mutable {
+            if (!initialize(masterPassword)) {
+                throw std::runtime_error("Initialization failed");
+            }
+            masterPassword.wipe();
+            return "Password manager initialized successfully";
+        });
+    return true;
+}
+
+bool PasswordManager::beginAddPassword(std::string service, SecretString password) {
+    startAsync(AsyncOperation::save_password,
+        "Encrypting and saving password entry...",
+        [this, service = std::move(service), password = std::move(password)]() mutable {
+            addPassword(service, password);
+            password.wipe();
+            return "Password saved for: " + service;
+        });
+    return true;
+}
+
+bool PasswordManager::beginDeletePassword(std::string service) {
+    startAsync(AsyncOperation::delete_password,
+        "Re-encrypting vault after deleting entry...",
+        [this, service = std::move(service)]() mutable {
+            if (!deletePassword(service)) {
+                throw std::runtime_error("Password entry not found");
+            }
+            return "Deleted password for: " + service;
+        });
+    return true;
+}
+
+bool PasswordManager::pollAsync() {
+    std::future<void> worker;
+    {
+        std::lock_guard<std::mutex> lock(async_mutex_);
+        if (!async_state_.worker.valid()) {
+            return false;
+        }
+        if (async_state_.worker.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+            return false;
+        }
+        worker = std::move(async_state_.worker);
+    }
+
+    worker.get();
+    return true;
+}
+
+bool PasswordManager::consumeAsyncResult(bool& outSuccess, std::string& outMessage) {
+    std::lock_guard<std::mutex> lock(async_mutex_);
+    if (!async_state_.completed) {
+        return false;
+    }
+
+    outSuccess = async_state_.last_success;
+    outMessage = async_state_.completion_message;
+    async_state_.completed = false;
+    async_state_.last_operation = AsyncOperation::none;
+    async_state_.completion_message.clear();
+    return true;
+}
+
+bool PasswordManager::isBusy() const {
+    std::lock_guard<std::mutex> lock(async_mutex_);
+    return async_state_.busy;
+}
+
+std::string PasswordManager::currentStatusMessage() const {
+    std::lock_guard<std::mutex> lock(async_mutex_);
+    return async_state_.working_message;
+}
+
+bool PasswordManager::isInitialized() const {
+    std::lock_guard<std::mutex> lock(data_mutex_);
+    return !key.empty();
 }
