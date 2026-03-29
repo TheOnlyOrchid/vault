@@ -17,6 +17,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_executable(PasswordManager
   "src/main_cli.cpp"
   "src/main.cpp"
+  "src/async_worker.cpp"
+  "src/vault_file_store.cpp"
+  "src/vault_types.cpp"
   "src/password_manager.cpp"
   "src/file_utils.cpp"
   "src/crypto_utils.cpp"
