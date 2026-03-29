@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <future>
 #include <mutex>
 #include <optional>
@@ -12,12 +13,11 @@ public:
     ~AsyncWorker();
 
     template <typename Task>
-    void start(std::string workingMessage, Task&& task);
+    void start(const std::string& workingMessage, Task&& task);
 
     bool poll();
     bool consumeResult(bool& outSuccess, std::string& outMessage);
     bool isBusy() const;
-    std::string currentStatusMessage() const;
 
 private:
     struct Result {
@@ -27,14 +27,13 @@ private:
 
     mutable std::mutex mutex_;
     std::future<void> worker_;
-    std::string working_message_;
     std::optional<Result> pending_result_;
 };
 
 template <typename Task>
-void AsyncWorker::start(std::string workingMessage, Task&& task) {
+void AsyncWorker::start(const std::string&, Task&& task) {
     std::lock_guard lock(mutex_);
-    if (!working_message_.empty()) {
+    if (worker_.valid() && worker_.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
         throw std::runtime_error("Password manager is busy");
     }
 
@@ -42,7 +41,6 @@ void AsyncWorker::start(std::string workingMessage, Task&& task) {
         worker_.get();
     }
 
-    working_message_ = std::move(workingMessage);
     pending_result_.reset();
 
     worker_ = std::async(std::launch::async, [this, task = std::forward<Task>(task)]() mutable {
@@ -62,6 +60,5 @@ void AsyncWorker::start(std::string workingMessage, Task&& task) {
 
         std::lock_guard<std::mutex> taskLock(mutex_);
         pending_result_ = Result{success, std::move(message)};
-        working_message_.clear();
     });
 }

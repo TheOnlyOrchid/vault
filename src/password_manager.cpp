@@ -182,10 +182,6 @@ bool PasswordManager::isBusy() const {
     return async_worker_.isBusy();
 }
 
-std::string PasswordManager::currentStatusMessage() const {
-    return async_worker_.currentStatusMessage();
-}
-
 bool PasswordManager::isInitialized() const {
     std::lock_guard<std::mutex> lock(data_mutex_);
     return !vault_.key.empty();

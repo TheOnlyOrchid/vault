@@ -69,10 +69,5 @@ bool AsyncWorker::consumeResult(bool& outSuccess, std::string& outMessage) {
 
 bool AsyncWorker::isBusy() const {
     std::lock_guard lock(mutex_);
-    return !working_message_.empty();
-}
-
-std::string AsyncWorker::currentStatusMessage() const {
-    std::lock_guard lock(mutex_);
-    return working_message_;
+    return worker_.valid() && worker_.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready;
 }

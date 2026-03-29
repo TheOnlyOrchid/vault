@@ -25,7 +25,6 @@ public:
     bool pollAsync();
     bool consumeAsyncResult(bool& outSuccess, std::string& outMessage);
     bool isBusy() const;
-    std::string currentStatusMessage() const;
     bool isInitialized() const;
 
 private:
