@@ -33,7 +33,7 @@ private:
 
 template <typename Task>
 void AsyncWorker::start(std::string workingMessage, Task&& task) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     if (!working_message_.empty()) {
         throw std::runtime_error("Password manager is busy");
     }

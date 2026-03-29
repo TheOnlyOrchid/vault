@@ -19,7 +19,7 @@ constexpr int kTagLength = 16;
 constexpr int kKdfIterations = 600000;
 constexpr std::uint32_t kFormatVersion = 1;
 
-constexpr std::array<unsigned char, 8> kVaultMagic = {
+constexpr std::array kVaultMagic = {
     static_cast<unsigned char>('O'),
     static_cast<unsigned char>('R'),
     static_cast<unsigned char>('C'),
@@ -60,7 +60,7 @@ std::array<unsigned char, kPasswordCheckLength> buildPasswordCheck(std::span<con
 }
 
 bool isAscii(const std::string& value) {
-    return std::all_of(value.begin(), value.end(), [](unsigned char ch) {
+    return std::ranges::all_of(value, [](const unsigned char ch) {
         return ch <= 0x7FU;
     });
 }
@@ -134,7 +134,9 @@ vault::FieldValueType parseFieldValueType(const std::string& value) {
 }
 
 std::string secureBytesToString(std::span<const unsigned char> bytes) {
-    return std::string(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    return {
+        reinterpret_cast<const char*>(bytes.data()),
+        bytes.size()};
 }
 
 secure::SecureBytes secureBytesFromString(const std::string& value) {
@@ -152,11 +154,11 @@ void zeroizeString(std::string& value) noexcept {
     }
 }
 
-std::vector<unsigned char> buildBlob(std::uint32_t iterations,
+std::vector<unsigned char> buildBlob(const std::uint32_t iterations,
     const std::vector<unsigned char>& salt,
     const std::vector<unsigned char>& iv,
     const std::vector<unsigned char>& tag,
-    std::span<const unsigned char> key,
+    const std::span<const unsigned char> key,
     const secure::SecureBytes& ciphertext) {
     if (salt.size() != kSaltLength || iv.size() != kIvLength || tag.size() != kTagLength) {
         throw std::runtime_error("Unexpected vault component sizes");
@@ -166,7 +168,7 @@ std::vector<unsigned char> buildBlob(std::uint32_t iterations,
     blob.reserve(kVaultHeaderSize + iv.size() + tag.size() + ciphertext.size());
     blob.insert(blob.end(), kVaultMagic.begin(), kVaultMagic.end());
     appendU32BE(blob, kFormatVersion);
-    appendU32BE(blob, static_cast<std::uint32_t>(kVaultHeaderSize));
+    appendU32BE(blob, kVaultHeaderSize);
     appendU32BE(blob, kKdfIdPbkdf2Sha256);
     appendU32BE(blob, iterations);
     appendU32BE(blob, 0);
@@ -282,7 +284,7 @@ json serializeVault(const vault::VaultData& vault) {
 
         entryJson["fields"] = json::array();
         for (const vault::Field& field : entry.fields) {
-            std::string value = secureBytesToString(std::span<const unsigned char>(field.value.data(), field.value.size()));
+            std::string value = secureBytesToString(std::span(field.value.data(), field.value.size()));
             entryJson["fields"].push_back({
                 {"id", field.id},
                 {"key", field.key},
@@ -307,7 +309,7 @@ void deserializeVault(const json& root, vault::VaultData& vault) {
         throw std::runtime_error("Invalid vault payload structure");
     }
 
-    const json metadataJson = root.at("metadata");
+    const json& metadataJson = root.at("metadata");
     if (!metadataJson.is_object()) {
         throw std::runtime_error("Invalid vault metadata");
     }
@@ -317,7 +319,7 @@ void deserializeVault(const json& root, vault::VaultData& vault) {
     vault.metadata.updated_at = metadataJson.at("updated_at").get<std::uint64_t>();
     vault.metadata.last_opened_at = metadataJson.at("last_opened_at").get<std::uint64_t>();
 
-    const json entries = root.at("entries");
+    const json& entries = root.at("entries");
     if (!entries.is_array()) {
         throw std::runtime_error("Invalid entries payload");
     }
@@ -340,7 +342,7 @@ void deserializeVault(const json& root, vault::VaultData& vault) {
         entry.favorite = entryJson.at("favorite").get<bool>();
         entry.archived = entryJson.at("archived").get<bool>();
 
-        const json tags = entryJson.at("tags");
+        const json& tags = entryJson.at("tags");
         if (!tags.is_array()) {
             throw std::runtime_error("Invalid entry tags");
         }
@@ -352,7 +354,7 @@ void deserializeVault(const json& root, vault::VaultData& vault) {
             entry.tags.push_back(tag);
         }
 
-        const json fields = entryJson.at("fields");
+        const json& fields = entryJson.at("fields");
         if (!fields.is_array()) {
             throw std::runtime_error("Invalid entry fields");
         }
@@ -391,18 +393,20 @@ void VaultFileStore::openOrCreate(const SecretString& masterPassword, vault::Vau
 
     if (FileUtils::fileExists(data_file_)) {
         const std::vector<unsigned char> blob = FileUtils::readFileBytes(data_file_);
+
         if (blob.size() < 48) {
             throw std::runtime_error("Vault blob too small");
         }
+
+        const std::vector fileSalt(blob.begin() + 32, blob.begin() + 32 + kSaltLength);
 
         std::vector<unsigned char> iv;
         std::vector<unsigned char> tag;
         std::vector<unsigned char> ciphertext;
         std::uint32_t fileIterations = 0;
-        std::vector<unsigned char> fileSalt(blob.begin() + 32, blob.begin() + 32 + kSaltLength);
 
         vault.key = CryptoUtils::deriveKey(
-            std::span<const unsigned char>(reinterpret_cast<const unsigned char*>(pwView.data()), pwView.size()),
+            std::span(reinterpret_cast<const unsigned char*>(pwView.data()), pwView.size()),
             fileSalt,
             static_cast<int>(readU32BE(blob, 20)));
 
@@ -413,6 +417,7 @@ void VaultFileStore::openOrCreate(const SecretString& masterPassword, vault::Vau
             std::span<const unsigned char>(vault.key.data(), vault.key.size()),
             iv,
             tag);
+
         if (plaintext.empty()) {
             throw std::runtime_error("Vault payload is empty");
         }
@@ -428,7 +433,7 @@ void VaultFileStore::openOrCreate(const SecretString& masterPassword, vault::Vau
 
     vault.salt = CryptoUtils::generateRandom(kSaltLength);
     vault.key = CryptoUtils::deriveKey(
-        std::span<const unsigned char>(reinterpret_cast<const unsigned char*>(pwView.data()), pwView.size()),
+        std::span(reinterpret_cast<const unsigned char*>(pwView.data()), pwView.size()),
         vault.salt,
         kKdfIterations);
     vault.entries.clear();
@@ -459,7 +464,7 @@ void VaultFileStore::save(const vault::VaultData& vault) const {
     std::vector<unsigned char> tag;
     const secure::SecureBytes ciphertext = CryptoUtils::encryptRaw(
         std::span<const unsigned char>(plaintextBytes.data(), plaintextBytes.size()),
-        std::span<const unsigned char>(vault.key.data(), vault.key.size()),
+        std::span(vault.key.data(), vault.key.size()),
         iv,
         tag);
     secure::zeroize(plaintextBytes.data(), plaintextBytes.size());
@@ -470,7 +475,7 @@ void VaultFileStore::save(const vault::VaultData& vault) const {
         vault.salt,
         iv,
         tag,
-        std::span<const unsigned char>(vault.key.data(), vault.key.size()),
+        std::span(vault.key.data(), vault.key.size()),
         ciphertext);
     FileUtils::writeFileAtomic(data_file_, blob);
 }

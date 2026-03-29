@@ -84,7 +84,7 @@ void FileUtils::writeFileAtomic(const std::string& filename, const std::vector<u
 
 /**
  * there is no sanitisation of the file. Since this is a local password manager this is okay, however if I were to
- * include web support, or anything that contained untrusted inputs, sanitisation would be *needed*.
+ * anything that contained untrusted inputs, sanitisation would be *needed*.
  */
 std::string FileUtils::readFile(const std::string& filename) {
     if (!fileExists(filename)) {
@@ -95,8 +95,9 @@ std::string FileUtils::readFile(const std::string& filename) {
     if (!file) {
         throw std::runtime_error("Failed to read from: " + filename);
     }
-    return std::string((std::istreambuf_iterator<char>(file)),
-        std::istreambuf_iterator<char>());
+    return{
+        (std::istreambuf_iterator(file)),
+        std::istreambuf_iterator<char>()};
 }
 
 // this exists as a wrapper to port old code, used to use custom logic.
@@ -106,5 +107,7 @@ bool FileUtils::fileExists(const std::string& filename) {
 
 std::vector<unsigned char> FileUtils::readFileBytes(const std::string& filename) {
     std::string content = readFile(filename);
-    return std::vector<unsigned char>(content.begin(), content.end());
+    return {
+        content.begin(),
+        content.end()};
 }
