@@ -19,7 +19,7 @@ AsyncWorker::~AsyncWorker() {
 bool AsyncWorker::poll() {
     std::future<void> worker;
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard lock(mutex_);
         if (!worker_.valid()) {
             return false;
         }
@@ -34,21 +34,20 @@ bool AsyncWorker::poll() {
 }
 
 bool AsyncWorker::consumeResult(bool& outSuccess, std::string& outMessage) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!completed_) {
+    std::lock_guard lock(mutex_);
+    if (!pending_result_) {
         return false;
     }
 
-    outSuccess = last_success_;
-    outMessage = completion_message_;
-    completed_ = false;
-    completion_message_.clear();
+    outSuccess = pending_result_->success;
+    outMessage = std::move(pending_result_->message);
+    pending_result_.reset();
     return true;
 }
 
 bool AsyncWorker::isBusy() const {
     std::lock_guard lock(mutex_);
-    return busy_;
+    return !working_message_.empty();
 }
 
 std::string AsyncWorker::currentStatusMessage() const {

@@ -2,6 +2,7 @@
 
 #include <future>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -19,19 +20,21 @@ public:
     std::string currentStatusMessage() const;
 
 private:
+    struct Result {
+        bool success = false;
+        std::string message;
+    };
+
     mutable std::mutex mutex_;
     std::future<void> worker_;
-    bool busy_ = false;
-    bool completed_ = false;
-    bool last_success_ = false;
     std::string working_message_;
-    std::string completion_message_;
+    std::optional<Result> pending_result_;
 };
 
 template <typename Task>
 void AsyncWorker::start(std::string workingMessage, Task&& task) {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (busy_) {
+    if (!working_message_.empty()) {
         throw std::runtime_error("Password manager is busy");
     }
 
@@ -39,11 +42,8 @@ void AsyncWorker::start(std::string workingMessage, Task&& task) {
         worker_.get();
     }
 
-    busy_ = true;
-    completed_ = false;
-    last_success_ = false;
     working_message_ = std::move(workingMessage);
-    completion_message_.clear();
+    pending_result_.reset();
 
     worker_ = std::async(std::launch::async, [this, task = std::forward<Task>(task)]() mutable {
         bool success = false;
@@ -61,10 +61,7 @@ void AsyncWorker::start(std::string workingMessage, Task&& task) {
         }
 
         std::lock_guard<std::mutex> taskLock(mutex_);
-        busy_ = false;
-        completed_ = true;
-        last_success_ = success;
-        completion_message_ = std::move(message);
+        pending_result_ = Result{success, std::move(message)};
         working_message_.clear();
     });
 }
