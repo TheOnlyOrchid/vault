@@ -1,7 +1,7 @@
-#include "vault_file_store.h"
+#include "vault_file_store.hpp"
 
-#include "crypto_utils.h"
-#include "file_utils.h"
+#include "crypto_utils.hpp"
+#include "file_utils.hpp"
 #include "external/json/json.hpp"
 
 #include <algorithm>

@@ -2,8 +2,8 @@
 
 #include <string>
 
-#include "secret_string.h"
-#include "vault_types.h"
+#include "secret_string.hpp"
+#include "vault_types.hpp"
 
 class VaultFileStore {
 public:

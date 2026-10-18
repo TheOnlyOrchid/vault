@@ -1,6 +1,6 @@
-#include "vault_types.h"
+#include "vault_types.hpp"
 
-#include "crypto_utils.h"
+#include "crypto_utils.hpp"
 
 #include <chrono>
 

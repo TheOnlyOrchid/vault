@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <span>
 
-#include "secure_memory.h"
+#include "secure_memory.hpp"
 
 class CryptoUtils {
 public:

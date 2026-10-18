@@ -1,6 +1,6 @@
 #pragma once
 
-#include "secure_memory.h"
+#include "secure_memory.hpp"
 #include <algorithm>
 #include <cstring>
 #include <string_view>

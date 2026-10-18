@@ -4,10 +4,10 @@
 #include <string>
 #include <vector>
 
-#include "async_worker.h"
-#include "secret_string.h"
-#include "vault_file_store.h"
-#include "vault_types.h"
+#include "async_worker.hpp"
+#include "secret_string.hpp"
+#include "vault_file_store.hpp"
+#include "vault_types.hpp"
 
 class PasswordManager {
 public:

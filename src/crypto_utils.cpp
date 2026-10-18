@@ -1,4 +1,4 @@
-#include "crypto_utils.h"
+#include "crypto_utils.hpp"
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <cctype>

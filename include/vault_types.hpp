@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-#include "secure_memory.h"
+#include "secure_memory.hpp"
 
 namespace vault {
 

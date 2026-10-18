@@ -1,9 +1,9 @@
-#include "password_manager.h"
+#include "password_manager.hpp"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
-#include "secure_memory.h"
-#include "secret_string.h"
+#include "secure_memory.hpp"
+#include "secret_string.hpp"
 #include <GLFW/glfw3.h>
 #include <cstdio>
 #include <cstring>
@@ -74,7 +74,7 @@ int main(int, char**) {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        ImGui::Begin("Password Manager", NULL, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+        ImGui::Begin("Password Manager", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
         ImGui::SetWindowSize(ImVec2(800, 600));
 
         if (!initialized) {
@@ -134,7 +134,7 @@ int main(int, char**) {
 
             ImGui::SameLine();
             if (ImGui::Button("Delete Selected") && selectedService >= 0) {
-                if (selectedService >= 0 && selectedService < servicesList.size()) {
+                if (selectedService < servicesList.size()) {
                     pm.beginDeletePassword(servicesList[selectedService]);
                     selectedService = -1;
                     selectedPassword.wipe();
