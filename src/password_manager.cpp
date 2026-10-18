@@ -134,6 +134,19 @@ bool PasswordManager::deletePassword(const std::string& service) {
     return true;
 }
 
+void PasswordManager::changeMasterKey(const SecretString& currentMasterPass, const SecretString& newMasterPass)
+{
+    std::lock_guard<std::mutex> lock(data_mutex_);
+
+    if (vault_.key.empty())
+    {
+        throw std::runtime_error("Attempted to change master key whilst password manager is uninitialised");
+    }
+
+    file_store_.rekey(currentMasterPass, newMasterPass, vault_);
+}
+
+
 bool PasswordManager::beginInitialize(SecretString masterPassword) {
     async_worker_.start(
         "Unlocking vault. Deriving key and loading encrypted data...",

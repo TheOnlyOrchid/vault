@@ -19,6 +19,8 @@ public:
     std::vector<std::string> listServices() const;
     bool deletePassword(const std::string& service);
 
+    void changeMasterKey(const SecretString& currentMasterPass, const SecretString& newMasterPass);
+
     bool beginInitialize(SecretString masterPassword);
     bool beginAddPassword(std::string service, SecretString password);
     bool beginDeletePassword(std::string service);

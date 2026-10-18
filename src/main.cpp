@@ -47,6 +47,9 @@ int main(int, char**) {
     char masterPassword[128] = "";
     char service[128] = "";
     char password[128] = "";
+    char newMasterKey[128] = "";
+    char currentMasterKey[128] = "";
+    char newMasterKeyDupe[128] = "";
 
     bool showPassword = false;
     std::vector<std::string> servicesList;
@@ -101,9 +104,6 @@ int main(int, char**) {
             ImGui::EndDisabled();
         }
         else {
-            ImGui::Text("Password Manager");
-            ImGui::Separator();
-
             ImGui::Text("Add/Update Password");
             ImGui::BeginDisabled(busy);
             ImGui::InputTextWithHint("Service", "e.g. Gmail, Facebook", service, IM_ARRAYSIZE(service));
@@ -117,6 +117,29 @@ int main(int, char**) {
                     pw.wipe();
                     std::memset(service, 0, sizeof(service));
                     secure::zeroize(password, sizeof(password));
+                }
+            }
+
+            ImGui::Separator();
+
+
+            ImGui::InputTextWithHint("Current Master Key", "Enter current master key", currentMasterKey, IM_ARRAYSIZE(currentMasterKey), showPassword ? 0 : ImGuiInputTextFlags_Password);
+            ImGui::InputTextWithHint("New Master key", "Enter new master key", newMasterKey, IM_ARRAYSIZE(newMasterKey), showPassword ? 0 : ImGuiInputTextFlags_Password);
+            ImGui::InputTextWithHint("New Master key dupe", "Confirm your new master key", newMasterKeyDupe, IM_ARRAYSIZE(newMasterKeyDupe), showPassword ? 0 : ImGuiInputTextFlags_Password);
+            if (ImGui::Button("Change Master Key"))
+            {
+                if (strlen(newMasterKey) != 0
+                    && strlen(currentMasterKey) != 0
+                    && std::ranges::equal(newMasterKey, newMasterKeyDupe)
+                    && !std::ranges::equal(currentMasterKey, newMasterKey))
+                {
+                    SecretString currentMasterPass = SecretString::from_cstr(currentMasterKey);
+                    SecretString newMasterPass = SecretString::from_cstr(newMasterKey);
+                    pm.changeMasterKey(currentMasterPass, newMasterPass);
+
+                    secure::zeroize(currentMasterKey, sizeof(currentMasterKey));
+                    secure::zeroize(newMasterKey, sizeof(newMasterKey));
+                    secure::zeroize(newMasterKeyDupe, sizeof(newMasterKeyDupe));
                 }
             }
 

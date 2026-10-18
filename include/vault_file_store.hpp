@@ -11,6 +11,7 @@ public:
 
     void openOrCreate(const SecretString& masterPassword, vault::VaultData& vault) const;
     void save(const vault::VaultData& vault) const;
+    void rekey(const SecretString& currentMasterPassword, const SecretString& newMasterPassword, vault::VaultData& vault) const;
 
 private:
     std::string data_file_;

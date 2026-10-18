@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <iostream>
 #include <openssl/sha.h>
 #include <span>
 #include <stdexcept>
@@ -478,4 +479,74 @@ void VaultFileStore::save(const vault::VaultData& vault) const {
         std::span(vault.key.data(), vault.key.size()),
         ciphertext);
     FileUtils::writeFileAtomic(data_file_, blob);
+}
+
+void VaultFileStore::rekey(const SecretString& currentMasterPassword, const SecretString& newMasterPassword, vault::VaultData& vault) const
+{
+    const auto currentPwView = currentMasterPassword.view();
+    if ( currentPwView.empty() ) {
+        throw std::runtime_error("Master password cannot be empty");
+    }
+
+    const auto newPwView = newMasterPassword.view();
+    if ( newPwView.empty())
+    {
+        throw std::runtime_error("New master password cannot be empty");
+    }
+
+    if (!FileUtils::fileExists(data_file_))
+    {
+        throw std::runtime_error("Attempted to change the master password of a vault that doesnt exist");
+    }
+
+    const std::vector<unsigned char> blob = FileUtils::readFileBytes(data_file_);
+    if (blob.size() < 48) {
+        throw std::runtime_error("Vault blob too small");
+    }
+
+    const std::vector fileSalt(blob.begin() + 32, blob.begin() + 32 + kSaltLength);
+
+    std::vector<unsigned char> iv;
+    std::vector<unsigned char> tag;
+    std::vector<unsigned char> ciphertext;
+    std::uint32_t fileIterations = 0;
+
+    const secure::SecureBytes currentKey = CryptoUtils::deriveKey(
+        std::span(reinterpret_cast<const unsigned char*>(currentPwView.data()), currentPwView.size()),
+        fileSalt,
+        static_cast<int>(readU32BE(blob, 20)));
+
+    auto rekeyedVault = vault;
+
+    parseBlob(blob, fileIterations, rekeyedVault.salt, iv, tag,
+        std::span(currentKey.data(), currentKey.size()), ciphertext);
+
+    const secure::SecureBytes plaintext = CryptoUtils::decryptRaw(ciphertext,
+        std::span(currentKey.data(), currentKey.size()),
+        iv,
+        tag);
+
+    if (plaintext.empty()) {
+        throw std::runtime_error("Vault payload is empty");
+    }
+
+    const char* plaintextBegin = reinterpret_cast<const char*>(plaintext.data());
+    const char* plaintextEnd = plaintextBegin + plaintext.size();
+
+
+    deserializeVault(json::parse(plaintextBegin, plaintextEnd), rekeyedVault);
+
+    rekeyedVault.salt = CryptoUtils::generateRandom(kSaltLength);
+    rekeyedVault.key = CryptoUtils::deriveKey(
+        std::span(reinterpret_cast<const unsigned char*>(newPwView.data()), newPwView.size()),
+        rekeyedVault.salt,
+        static_cast<int>(readU32BE(blob, 20)));
+
+    const auto now = vault::nowEpochSeconds();
+    rekeyedVault.metadata.last_opened_at = now;
+    rekeyedVault.metadata.updated_at = now;
+
+    save(rekeyedVault);
+
+    vault = std::move(rekeyedVault);
 }
